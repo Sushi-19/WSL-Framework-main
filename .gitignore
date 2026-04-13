@@ -58,7 +58,7 @@ data/
 *.ckpt
 logs/
 checkpoints/
-models/
+# models/
 
 # Temporary files
 *.tmp
