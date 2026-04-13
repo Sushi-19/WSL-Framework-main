@@ -1,3 +1,9 @@
+import sys
+import os
+# Force Linux to recognize the local src directory to resolve ModuleNotFoundError
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
