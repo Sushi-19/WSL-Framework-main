@@ -32,7 +32,11 @@ def run_experiments(dry_run=False, fast_dev_run=False):
                 if not dry_run:
                     # Provide pythonpath via env for subprocess
                     env = os.environ.copy()
-                    env["PYTHONPATH"] = ".;.\\src"
+                    
+                    # Cross-platform PYTHONPATH mapping (fixes Linux server crash)
+                    current_dir = os.path.abspath(os.getcwd())
+                    src_dir = os.path.join(current_dir, "src")
+                    env["PYTHONPATH"] = f"{current_dir}{os.pathsep}{src_dir}"
                     
                     try:
                         subprocess.run(cmd, env=env, check=True)
