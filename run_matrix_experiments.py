@@ -7,7 +7,8 @@ MODELS = ['simple_cnn', 'resnet', 'mlp']
 STRATEGIES = ['baseline', 'pseudo_labeling', 'consistency', 'co_training', 'adas_wsl']
 
 def run_experiments(dry_run=False, fast_dev_run=False):
-    epochs = 2 if fast_dev_run else 35
+    epochs = 2 if fast_dev_run else 50
+    output_dir = "matrix_results_dev" if fast_dev_run else "matrix_results_50epochs"
     total_runs = len(DATASETS) * len(MODELS) * len(STRATEGIES)
     current_run = 0
     
@@ -25,7 +26,8 @@ def run_experiments(dry_run=False, fast_dev_run=False):
                     "--model_type", model,
                     "--strategy", strategy,
                     "--epochs", str(epochs),
-                    "--batch_size", "128"
+                    "--batch_size", "128",
+                    "--output_dir", output_dir
                 ]
                 
                 print(f"[{current_run}/{total_runs}] Running: {' '.join(cmd)}")

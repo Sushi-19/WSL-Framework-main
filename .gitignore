@@ -26,6 +26,7 @@ venv/
 env/
 ENV/
 wsl_env/
+wsl_venv/
 .venv/
 
 # Jupyter Notebook

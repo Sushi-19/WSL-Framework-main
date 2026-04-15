@@ -44,8 +44,10 @@ def parse_args():
                         choices=['simple_cnn', 'resnet', 'mlp'])
     parser.add_argument('--strategy', type=str, default='adas_wsl',
                         choices=['baseline', 'pseudo_labeling', 'consistency', 'co_training', 'adas_wsl'])
-    parser.add_argument('--epochs', type=int, default=35)
+    parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--output_dir', type=str, default='matrix_results_50epochs',
+                        help='Sub-directory under experiments/ to save results (e.g. matrix_results_50epochs)')
     return parser.parse_args()
 
 def main():
@@ -54,7 +56,7 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device} | Dataset: {args.dataset} | Model: {args.model_type} | Strategy: {args.strategy}")
     
-    save_dir = Path(f'experiments/matrix_results/{args.dataset}_{args.model_type}_{args.strategy}')
+    save_dir = Path(f'experiments/{args.output_dir}/{args.dataset}_{args.model_type}_{args.strategy}')
     save_dir.mkdir(parents=True, exist_ok=True)
     
     # Load requested dataset
