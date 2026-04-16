@@ -46,7 +46,7 @@ wsl_venv/
 .env.production.local
 
 # Data files (large datasets)
-data/
+/data/
 *.tar.gz
 *.npy
 *.pkl
