@@ -10,19 +10,12 @@ def get_datasets(dataset_name, data_dir='./data'):
     os.makedirs(data_dir, exist_ok=True)
     
     if dataset_name == 'cifar10':
-        train_transform = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        test_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-        ])
-        train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=train_transform)
-        test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=test_transform)
+        train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=transform)
+        test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=transform)
         
     elif dataset_name == 'mnist':
         transform = transforms.Compose([
@@ -33,33 +26,20 @@ def get_datasets(dataset_name, data_dir='./data'):
         test_dataset = datasets.MNIST(data_dir, train=False, download=True, transform=transform)
 
     elif dataset_name == 'cifar100':
-        train_transform = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        test_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
-        ])
-        train_dataset = datasets.CIFAR100(data_dir, train=True, download=True, transform=train_transform)
-        test_dataset = datasets.CIFAR100(data_dir, train=False, download=True, transform=test_transform)
+        train_dataset = datasets.CIFAR100(data_dir, train=True, download=True, transform=transform)
+        test_dataset = datasets.CIFAR100(data_dir, train=False, download=True, transform=transform)
 
     elif dataset_name == 'svhn':
-        train_transform = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970))
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        test_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4377, 0.4438, 0.4728), (0.1980, 0.2010, 0.1970))
-        ])
-        train_dataset = datasets.SVHN(data_dir, split='train', download=True, transform=train_transform)
-        test_dataset = datasets.SVHN(data_dir, split='test', download=True, transform=test_transform)
+        train_dataset = datasets.SVHN(data_dir, split='train', download=True, transform=transform)
+        test_dataset = datasets.SVHN(data_dir, split='test', download=True, transform=transform)
         # SVHN targets are stored in 'labels' as a numpy array, convert to tensor for consistency
         train_dataset.targets = torch.tensor(train_dataset.labels, dtype=torch.long)
         test_dataset.targets = torch.tensor(test_dataset.labels, dtype=torch.long)
@@ -76,19 +56,12 @@ def get_datasets(dataset_name, data_dir='./data'):
         test_dataset.targets = torch.tensor(test_dataset.labels, dtype=torch.long)
 
     elif dataset_name == 'cifar10n':
-        train_transform = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        test_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-        ])
-        train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=train_transform)
-        test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=test_transform)
+        train_dataset = datasets.CIFAR10(data_dir, train=True, download=True, transform=transform)
+        test_dataset = datasets.CIFAR10(data_dir, train=False, download=True, transform=transform)
         
         cifar10n_path = os.path.join(data_dir, 'CIFAR-10_human.pt')
         if not os.path.exists(cifar10n_path):

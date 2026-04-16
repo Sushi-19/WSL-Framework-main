@@ -34,20 +34,11 @@ class ProportionAlignedStrategyWeighting:
             P_expected = torch.tensor(labeled_class_dist, dtype=torch.float32)
             P_expected = P_expected / P_expected.sum()
             # KL divergence: how different are predicted vs expected distributions
-            # KL(P_expected || P_pred): how far predicted dist is from expected
-            kl_div = F.kl_div(
-                torch.log(P_pred + 1e-8),  # log of predicted probs (input)
-                P_expected,                 # target distribution
-                reduction='sum'
-            ).item()
-            kl_div = max(kl_div, 0.0)  # clamp numerical negatives
-            # Adjust all three strategy weights based on KL divergence
-            # lambda1 (pseudo-labeling): shrinks when distribution mismatch is high
+            kl_div = F.kl_div(P_pred.log() + 1e-8, P_expected, reduction='sum').item()
+            # Adjust strategy weights based on KL divergence
             new_l1 = self.base_lambda1 * np.exp(-self.beta * kl_div)
-            # lambda2 (consistency): grows when distribution mismatch is high
             new_l2 = self.base_lambda2 * (1 + self.gamma * kl_div)
-            # lambda3 (co-training): grows moderately — also adapts instead of staying fixed
-            new_l3 = self.base_lambda3 * (1 + self.gamma * 0.5 * kl_div)
+            new_l3 = self.base_lambda3
             # Normalize so weights sum to 1
             total = new_l1 + new_l2 + new_l3
             self.lambda1 = new_l1 / total

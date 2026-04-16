@@ -108,8 +108,7 @@ def main():
     )
     teacher_model = copy.deepcopy(model) if args.strategy != 'baseline' else None
     
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
     
     trainer = Trainer(
         model=model,
@@ -118,7 +117,6 @@ def main():
         test_loader=test_loader,
         unlabeled_loader=train_loader, # Mocking unlabeled loader with train array for now
         optimizer=optimizer,
-        scheduler=scheduler,
         device=device,
         save_dir=save_dir,
         wene=wene,
