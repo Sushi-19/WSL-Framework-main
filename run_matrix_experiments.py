@@ -9,7 +9,6 @@ STRATEGIES = ['baseline', 'pseudo_labeling', 'consistency', 'co_training', 'adas
 EPOCH_CONFIGS = [
     (35, "matrix_results_35epochs"),
     (50, "matrix_results_50epochs"),
-    (80, "matrix_results_80epochs"),
 ]
 
 def run_experiments(dry_run=False, fast_dev_run=False):
