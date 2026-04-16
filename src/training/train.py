@@ -98,6 +98,8 @@ class Trainer:
             train_loss, train_acc = self._train_epoch(epoch)
             history['train_loss'].append(train_loss)
             history['train_acc'].append(train_acc)
+            self.train_losses.append(train_loss)
+            self.train_accs.append(train_acc)
             
             # SACT checkpoints
             if self.sact is not None:
@@ -113,6 +115,8 @@ class Trainer:
             val_loss, val_acc = self._evaluate_loader(self.val_loader)
             history['val_loss'].append(val_loss)
             history['val_acc'].append(val_acc)
+            self.val_losses.append(val_loss)
+            self.val_accs.append(val_acc)
             
             logger.info(
                 f"Epoch {epoch}/{epochs}: "
@@ -125,6 +129,8 @@ class Trainer:
                 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
+                self.best_val_acc = val_acc
+                self.best_epoch = epoch
                 patience_counter = 0
                 self._save_checkpoint(epoch, val_acc)
             else:
