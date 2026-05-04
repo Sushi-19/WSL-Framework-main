@@ -43,7 +43,7 @@ def parse_args():
     parser.add_argument('--model_type', type=str, default='simple_cnn',
                         choices=['simple_cnn', 'resnet', 'mlp'])
     parser.add_argument('--strategy', type=str, default='adas_wsl',
-                        choices=['baseline', 'pseudo_labeling', 'consistency', 'co_training', 'adas_wsl'])
+                        choices=['baseline', 'pseudo_labeling', 'consistency', 'co_training', 'adas_wsl', 'combined'])
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--output_dir', type=str, default='matrix_results_50epochs',
@@ -98,6 +98,8 @@ def main():
             pasw = MockPASW(0.0, 1.0, 0.0)
         elif args.strategy == 'co_training':
             pasw = MockPASW(0.0, 0.0, 1.0)
+        elif args.strategy == 'combined':
+            pasw = MockPASW(0.4, 0.3, 0.3)
     
     # Setup model parameters
     model = NoiseRobustModel(

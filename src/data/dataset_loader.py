@@ -77,18 +77,42 @@ def get_datasets(dataset_name, data_dir='./data'):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        train_dir = os.path.join(data_dir, 'animal10n', 'training')
-        test_dir = os.path.join(data_dir, 'animal10n', 'testing')
-        if not os.path.exists(train_dir):
-            print("Animal-10N not found. For full Animal-10N, manually download from github.com/UCSC-REAL/Animal-10N into data/animal10n/.")
-            # Dummy fallback for mocking
-            train_dataset = datasets.FakeData(size=1000, image_size=(3, 32, 32), num_classes=10, transform=transform)
-            test_dataset = datasets.FakeData(size=200, image_size=(3, 32, 32), num_classes=10, transform=transform)
-            train_dataset.targets = [label for _, label in train_dataset]
-            test_dataset.targets = [label for _, label in test_dataset]
+        try:
+            from datasets import load_dataset
+        except ImportError:
+            raise ImportError("Please install the datasets library using: pip install datasets")
+
+        print("Downloading Animal-10N dataset via Hugging Face...")
+        hf_dataset = load_dataset("dgrnd4/animals-10")
+        
+        class HFDatasetWrapper(torch.utils.data.Dataset):
+            def __init__(self, hf_ds, transform=None):
+                self.hf_ds = hf_ds
+                self.transform = transform
+                self.targets = [item["label"] for item in self.hf_ds]
+                
+            def __len__(self):
+                return len(self.hf_ds)
+                
+            def __getitem__(self, idx):
+                item = self.hf_ds[idx]
+                img = item["image"].convert("RGB")
+                if self.transform:
+                    img = self.transform(img)
+                return img, item["label"]
+        
+        # Check if test split exists, otherwise split train manually
+        if 'test' in hf_dataset:
+            train_split = hf_dataset['train']
+            test_split = hf_dataset['test']
         else:
-            train_dataset = datasets.ImageFolder(train_dir, transform=transform)
-            test_dataset = datasets.ImageFolder(test_dir, transform=transform)
+            print("No test split found, creating an 80/20 split from train data...")
+            splits = hf_dataset['train'].train_test_split(test_size=0.2, seed=42)
+            train_split = splits['train']
+            test_split = splits['test']
+            
+        train_dataset = HFDatasetWrapper(train_split, transform)
+        test_dataset = HFDatasetWrapper(test_split, transform)
 
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")

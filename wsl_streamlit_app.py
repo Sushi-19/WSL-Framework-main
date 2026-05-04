@@ -229,25 +229,67 @@ if 'experiment_results' not in st.session_state:
 if 'current_experiment' not in st.session_state:
     st.session_state.current_experiment = None
 
-# Consistent performance values across the framework
+# Real experiment results from matrix_results_50epochs
 PERFORMANCE_DATA = {
-    'MNIST': {
-        'CNN': {'baseline': 0.9717, 'robust': 0.9817, 'semi_supervised': 0.9850},
-        'ResNet18': {'baseline': 0.9850, 'robust': 0.9890, 'semi_supervised': 0.9920},
-        'MLP': {'baseline': 0.9750, 'robust': 0.9817, 'semi_supervised': 0.9880}
+    'CIFAR-100': {
+        'Simple CNN': {
+            'baseline': 0.4494, 'consistency': 0.4494, 'pseudo_labeling': 0.4494,
+            'co_training': 0.4494, 'adas_wsl': 0.4705
+        },
+        'ResNet': {
+            'baseline': 0.5367, 'consistency': 0.5600, 'pseudo_labeling': 0.5289,
+            'co_training': 0.5321, 'adas_wsl': 0.5416
+        },
+        'MLP': {
+            'baseline': 0.2013, 'consistency': 0.2013, 'pseudo_labeling': 0.2013,
+            'co_training': 0.2013, 'adas_wsl': 0.2104
+        }
     },
-    'CIFAR-10': {
-        'CNN': {'baseline': 0.7200, 'robust': 0.7810, 'semi_supervised': 0.7950},
-        'ResNet18': {'baseline': 0.8000, 'robust': 0.8181, 'semi_supervised': 0.8250},
-        'MLP': {'baseline': 0.6500, 'robust': 0.7200, 'semi_supervised': 0.7500}
+    'CIFAR-10N': {
+        'Simple CNN': {
+            'baseline': 0.7881, 'consistency': 0.7881, 'pseudo_labeling': 0.7881,
+            'co_training': 0.7881, 'adas_wsl': 0.7792
+        },
+        'ResNet': {
+            'baseline': 0.8345, 'consistency': 0.8476, 'pseudo_labeling': 0.8446,
+            'co_training': 0.8402, 'adas_wsl': 0.8350
+        },
+        'MLP': {
+            'baseline': 0.5426, 'consistency': 0.5305, 'pseudo_labeling': 0.5358,
+            'co_training': 0.5307, 'adas_wsl': 0.5354
+        }
+    },
+    'SVHN': {
+        'Simple CNN': {
+            'baseline': 0.9295, 'consistency': 0.9295, 'pseudo_labeling': 0.9295,
+            'co_training': 0.9295, 'adas_wsl': 0.9325
+        },
+        'ResNet': {
+            'baseline': 0.9338, 'consistency': 0.9417, 'pseudo_labeling': 0.9488,
+            'co_training': 0.9453, 'adas_wsl': 0.9471
+        },
+        'MLP': {
+            'baseline': 0.8012, 'consistency': 0.7916, 'pseudo_labeling': 0.8076,
+            'co_training': 0.7855, 'adas_wsl': 0.7964
+        }
     }
 }
 
 STRATEGY_PERFORMANCE = {
-    'Consistency Regularization': 0.718,
-    'Pseudo-Labeling': 0.800,
-    'Co-Training': 0.739,
-    'Combined WSL': 0.818
+    'Baseline': 0.6940,
+    'Consistency Regularization': 0.6956,
+    'Pseudo-Labeling': 0.6968,
+    'Co-Training': 0.6935,
+    'ADAS-WSL': 0.7025
+}
+
+STRATEGY_KEY_MAP = {
+    'Baseline': 'baseline',
+    'Consistency Regularization': 'consistency',
+    'Pseudo-Labeling': 'pseudo_labeling',
+    'Co-Training': 'co_training',
+    'ADAS-WSL': 'adas_wsl',
+    'Combined (Fixed Weights)': 'combined'
 }
 
 def load_experiment_data():
@@ -303,22 +345,24 @@ def create_confusion_matrix(accuracy, num_classes=10):
     
     return matrix
 
-def plot_training_curves(epochs=100, dataset='CIFAR-10', model='CNN', strategy='Combined WSL'):
+def plot_training_curves(epochs=100, dataset='CIFAR-10N', model='ResNet', strategy='ADAS-WSL'):
     """Generate realistic training curves based on dataset, model, and strategy"""
     epochs_list = list(range(1, epochs + 1))
     
     # Base performance based on dataset and model
-    base_performance = PERFORMANCE_DATA[dataset][model]['baseline']
+    strategy_key = STRATEGY_KEY_MAP.get(strategy, 'baseline')
+    base_performance = PERFORMANCE_DATA[dataset][model].get(strategy_key, PERFORMANCE_DATA[dataset][model]['baseline'])
     
-    # Strategy multipliers
+    # Strategy multipliers (for curve shape only)
     strategy_multipliers = {
-        'Consistency Regularization': 0.95,
-        'Pseudo-Labeling': 1.02,
-        'Co-Training': 0.98,
-        'Combined WSL': 1.05
+        'Baseline': 1.00,
+        'Consistency Regularization': 1.00,
+        'Pseudo-Labeling': 1.00,
+        'Co-Training': 1.00,
+        'ADAS-WSL': 1.00
     }
     
-    final_target = base_performance * strategy_multipliers[strategy]
+    final_target = base_performance * strategy_multipliers.get(strategy, 1.0)
     
     # Generate realistic curves
     train_loss = [2.0 * np.exp(-epoch/30) + 0.1 + np.random.normal(0, 0.03) for epoch in epochs_list]
@@ -331,44 +375,32 @@ def plot_training_curves(epochs=100, dataset='CIFAR-10', model='CNN', strategy='
     return epochs_list, train_loss, val_loss, train_acc, val_acc
 
 def run_simulation_experiment(dataset, model, strategy, labeled_ratio, epochs):
-    """Simulate running an experiment with consistent values"""
+    """Simulate running an experiment with real result values"""
     # Simulate processing time
     with st.spinner(f"Running {strategy} experiment with {model} on {dataset}..."):
         time.sleep(2)
     
-    # Get base performance
-    base_acc = PERFORMANCE_DATA[dataset][model]['baseline']
+    # Get real accuracy from experiment results
+    strategy_key = STRATEGY_KEY_MAP.get(strategy, 'baseline')
+    final_accuracy = PERFORMANCE_DATA[dataset][model].get(strategy_key, PERFORMANCE_DATA[dataset][model]['baseline'])
     
-    # Strategy multipliers
-    strategy_multipliers = {
-        'Consistency Regularization': 0.95,
-        'Pseudo-Labeling': 1.02,
-        'Co-Training': 0.98,
-        'Combined WSL': 1.05
-    }
-    
-    strategy_mult = strategy_multipliers[strategy]
-    ratio_mult = 0.8 + (labeled_ratio / 100) * 0.2
-    
-    final_accuracy = base_acc * strategy_mult * ratio_mult + np.random.normal(0, 0.01)
-    final_accuracy = min(0.99, max(0.5, final_accuracy))
-    
-    # More realistic training time calculation based on model and dataset complexity
+    # Realistic training time based on model/dataset
     base_time_per_epoch = {
-        'MNIST': {'CNN': 0.5, 'ResNet18': 1.2, 'MLP': 0.3},
-        'CIFAR-10': {'CNN': 1.5, 'ResNet18': 3.0, 'MLP': 0.8}
+        'CIFAR-100': {'Simple CNN': 1.8, 'ResNet': 3.5, 'MLP': 0.9},
+        'CIFAR-10N': {'Simple CNN': 1.2, 'ResNet': 2.8, 'MLP': 0.7},
+        'SVHN':      {'Simple CNN': 1.5, 'ResNet': 3.0, 'MLP': 0.8}
     }
-    
-    base_time = base_time_per_epoch[dataset][model]
     strategy_time_multiplier = {
+        'Baseline': 1.0,
         'Consistency Regularization': 1.1,
         'Pseudo-Labeling': 1.05,
         'Co-Training': 1.2,
-        'Combined WSL': 1.15
+        'ADAS-WSL': 1.15
     }
     
-    training_time = epochs * base_time * strategy_time_multiplier[strategy] + np.random.normal(0, 0.5)
-    training_time = max(1.0, training_time)  # Minimum 1 minute
+    base_time = base_time_per_epoch[dataset][model]
+    training_time = epochs * base_time * strategy_time_multiplier.get(strategy, 1.0) + np.random.normal(0, 0.5)
+    training_time = max(1.0, training_time)
     
     return {
         'accuracy': final_accuracy,
@@ -381,22 +413,17 @@ def run_simulation_experiment(dataset, model, strategy, labeled_ratio, epochs):
     }
 
 def create_performance_comparison_chart():
-    """Create a professional performance comparison chart"""
-    datasets = ['MNIST', 'CIFAR-10']
-    models = ['CNN', 'ResNet18', 'MLP']
-    strategies = ['Baseline', 'Robust', 'Semi-Supervised']
+    """Create a professional performance comparison chart using real results"""
+    datasets = ['CIFAR-100', 'CIFAR-10N', 'SVHN']
+    models = ['Simple CNN', 'ResNet', 'MLP']
+    strategies = ['Baseline', 'Consistency Regularization', 'Pseudo-Labeling', 'Co-Training', 'ADAS-WSL']
     
     data = []
     for dataset in datasets:
         for model in models:
             for strategy in strategies:
-                if strategy == 'Baseline':
-                    acc = PERFORMANCE_DATA[dataset][model]['baseline']
-                elif strategy == 'Robust':
-                    acc = PERFORMANCE_DATA[dataset][model]['robust']
-                else:
-                    acc = PERFORMANCE_DATA[dataset][model]['semi_supervised']
-                
+                strategy_key = STRATEGY_KEY_MAP[strategy]
+                acc = PERFORMANCE_DATA[dataset][model][strategy_key]
                 data.append({
                     'Dataset': dataset,
                     'Model': model,
@@ -414,8 +441,10 @@ def create_performance_comparison_chart():
         facet_col='Dataset',
         color_discrete_map={
             'Baseline': '#00B4D8',
-            'Robust': '#FF6B6B',
-            'Semi-Supervised': '#4ECDC4'
+            'Consistency Regularization': '#4ECDC4',
+            'Pseudo-Labeling': '#FF6B6B',
+            'Co-Training': '#FFE66D',
+            'ADAS-WSL': '#A29BFE'
         },
         title="Model Performance Comparison Across Datasets and Strategies",
         height=500
@@ -455,21 +484,21 @@ def main():
         # Dataset selection
         dataset = st.selectbox(
             "Select Dataset",
-            ["CIFAR-10", "MNIST"],
+            ["CIFAR-100", "CIFAR-10N", "SVHN"],
             help="Choose the dataset for your experiment"
         )
         
         # Model selection
         model = st.selectbox(
             "Select Model Architecture",
-            ["CNN", "ResNet18", "MLP"],
+            ["Simple CNN", "ResNet", "MLP"],
             help="Choose the deep learning model architecture"
         )
         
         # Strategy selection
         strategy = st.selectbox(
             "Select WSL Strategy",
-            ["Consistency Regularization", "Pseudo-Labeling", "Co-Training", "Combined WSL"],
+            ["Baseline", "Consistency Regularization", "Pseudo-Labeling", "Co-Training", "ADAS-WSL"],
             help="Choose the weakly supervised learning strategy"
         )
         
@@ -695,10 +724,12 @@ def main():
                 colorscale='Blues',
                 showscale=True,
                 colorbar=dict(
-                    title="Count",
-                    titleside="right",
-                    tickfont=dict(color='#FFFFFF'),
-                    titlefont=dict(color='#FFFFFF')
+                    title=dict(
+                        text="Count",
+                        side="right",
+                        font=dict(color='#FFFFFF')
+                    ),
+                    tickfont=dict(color='#FFFFFF')
                 ),
                 text=cm.astype(int),
                 texttemplate="%{text}",
@@ -866,9 +897,9 @@ def main():
         <div class="strategy-card">
             <h4 style="color: #FFFFFF; font-family: sans-serif;">Datasets Supported</h4>
             <ul style="color: #B0B0B0;">
-                <li><strong>CIFAR-10:</strong> 32×32 RGB images, 10 classes</li>
-                <li><strong>MNIST:</strong> 28×28 grayscale digits, 10 classes</li>
-                <li><strong>Custom datasets</strong> with similar formats</li>
+                <li><strong>CIFAR-100:</strong> 32×32 RGB images, 100 classes</li>
+                <li><strong>CIFAR-10N:</strong> CIFAR-10 with real-world noisy labels</li>
+                <li><strong>SVHN:</strong> Street View House Numbers, 10 classes</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -878,8 +909,8 @@ def main():
         <div class="strategy-card">
             <h4 style="color: #FFFFFF; font-family: sans-serif;">Model Architectures</h4>
             <ul style="color: #B0B0B0;">
-                <li><strong>CNN:</strong> Convolutional Neural Networks</li>
-                <li><strong>ResNet18:</strong> Deep residual networks</li>
+                <li><strong>Simple CNN:</strong> Convolutional Neural Networks</li>
+                <li><strong>ResNet:</strong> Deep residual networks</li>
                 <li><strong>MLP:</strong> Multi-layer perceptrons</li>
                 <li><strong>Custom architectures</strong> supported</li>
             </ul>
@@ -891,33 +922,34 @@ def main():
         <div class="strategy-card">
             <h4 style="color: #FFFFFF; font-family: sans-serif;">WSL Strategies</h4>
             <ul style="color: #B0B0B0;">
+                <li><strong>Baseline:</strong> Standard supervised learning</li>
                 <li><strong>Consistency Regularization:</strong> Teacher-student learning</li>
                 <li><strong>Pseudo-Labeling:</strong> Confidence-based labeling</li>
                 <li><strong>Co-Training:</strong> Multi-view ensemble learning</li>
-                <li><strong>Combined WSL:</strong> Unified approach</li>
+                <li><strong>ADAS-WSL:</strong> Adaptive dual-axis weakly supervised</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
     
-    # Performance highlights with consistent values
+    # Performance highlights with real results
     st.markdown("""
     <div class="performance-highlight">
-        <h3>State-of-the-Art Performance</h3>
+        <h3>Experimental Results — 50 Epoch Training</h3>
         <div style="display: flex; justify-content: space-around; margin-top: 1rem;">
             <div>
-                <h4>MNIST Dataset</h4>
-                <p><strong>98.17%</strong> accuracy with 10% labeled data</p>
-                <p><strong>98.50%</strong> with semi-supervised learning</p>
+                <h4>SVHN Dataset</h4>
+                <p><strong>94.88%</strong> best accuracy (ResNet + Pseudo-Labeling)</p>
+                <p><strong>93.25%</strong> with Simple CNN + ADAS-WSL</p>
             </div>
             <div>
-                <h4>CIFAR-10 Dataset</h4>
-                <p><strong>81.81%</strong> accuracy with 10% labeled data</p>
-                <p><strong>82.50%</strong> with semi-supervised learning</p>
+                <h4>CIFAR-10N Dataset</h4>
+                <p><strong>84.76%</strong> best accuracy (ResNet + Consistency)</p>
+                <p><strong>83.50%</strong> with ResNet + ADAS-WSL</p>
             </div>
             <div>
-                <h4>Cost Reduction</h4>
-                <p><strong>90%</strong> reduction in data labeling</p>
-                <p><strong>3x</strong> faster training time</p>
+                <h4>CIFAR-100 Dataset</h4>
+                <p><strong>56.00%</strong> best accuracy (ResNet + Consistency)</p>
+                <p><strong>54.16%</strong> with ResNet + ADAS-WSL</p>
             </div>
         </div>
     </div>
@@ -969,7 +1001,7 @@ def main():
         <p style="font-size: 1.2rem; font-weight: 600; color: #FFFFFF; font-family: sans-serif;">
             <strong>Weakly Supervised Learning Framework</strong>
         </p>
-        <p style="margin-top: 0.5rem; font-family: sans-serif;">Developed by Deepak Gowda</p>
+        <p style="margin-top: 0.5rem; font-family: sans-serif;">Developed by Mustqeem Sannakki</p>
         <p style="margin-top: 0.5rem; font-size: 0.9rem; font-family: sans-serif;">
             Comprehensive WSL framework with multiple strategies, deep learning models, and extensive experimental validation
         </p>

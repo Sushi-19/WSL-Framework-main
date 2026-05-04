@@ -2,7 +2,7 @@ import os
 import subprocess
 import argparse
 
-DATASETS = ['cifar100', 'svhn', 'cifar10n']
+DATASETS = ['cifar100', 'svhn', 'cifar10n', 'animal10n', 'stl10']
 MODELS = ['simple_cnn', 'resnet', 'mlp']
 STRATEGIES = ['baseline', 'pseudo_labeling', 'consistency', 'co_training', 'adas_wsl']
 

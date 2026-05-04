@@ -5,6 +5,8 @@ from typing import Dict, List, Any, Tuple, Optional
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from torch.utils.data import DataLoader
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend — prevents hang on Windows
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -291,4 +293,136 @@ class ErrorAnalysis:
         plt.tight_layout()
         if save_dir:
             plt.savefig(f'{save_dir}/error_confidence.png')
-        plt.close() 
+        plt.close()
+
+
+if __name__ == '__main__':
+    import argparse
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+    from src.models.baseline import SimpleCNN, ResNet, MLP
+    from src.data.dataset_loader import get_datasets
+    from torch.utils.data import DataLoader
+
+    parser = argparse.ArgumentParser(description='Run benchmark evaluation on a trained model')
+    parser.add_argument('--dataset',    type=str, default='cifar100',
+                        choices=['cifar100', 'cifar10n', 'svhn'],
+                        help='Dataset to evaluate on')
+    parser.add_argument('--model_type', type=str, default='simple_cnn',
+                        choices=['simple_cnn', 'resnet', 'mlp'],
+                        help='Model architecture')
+    parser.add_argument('--strategy',   type=str, default='adas_wsl',
+                        help='Strategy name (used to locate checkpoint folder)')
+    parser.add_argument('--checkpoint', type=str, default=None,
+                        help='Path to best_model.pt (auto-detected if not set)')
+    parser.add_argument('--data_dir',   type=str, default='./data',
+                        help='Directory to download/load datasets')
+    parser.add_argument('--batch_size', type=int, default=128)
+    args = parser.parse_args()
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+
+    # ── Resolve checkpoint path ────────────────────────────────────────────────
+    if args.checkpoint is None:
+        args.checkpoint = os.path.join(
+            'experiments', 'matrix_results',
+            f"{args.dataset}_{args.model_type}_{args.strategy}",
+            'best_model.pt'
+        )
+
+    if not os.path.exists(args.checkpoint):
+        print(f"\n[ERROR] Checkpoint not found: {args.checkpoint}")
+        print("Available checkpoints are in experiments/matrix_results/")
+        sys.exit(1)
+
+    # ── Dataset config ─────────────────────────────────────────────────────────
+    NUM_CLASSES = {'cifar100': 100, 'cifar10n': 10, 'svhn': 10}
+    num_classes = NUM_CLASSES[args.dataset]
+
+    CLASS_NAMES = {
+        'cifar100': [
+            'apple','aquarium_fish','baby','bear','beaver','bed','bee','beetle','bicycle','bottle',
+            'bowl','boy','bridge','bus','butterfly','camel','can','castle','caterpillar','cattle',
+            'chair','chimpanzee','clock','cloud','cockroach','couch','crab','crocodile','cup','dinosaur',
+            'dolphin','elephant','flatfish','forest','fox','girl','hamster','house','kangaroo','keyboard',
+            'lamp','lawn_mower','leopard','lion','lizard','lobster','man','maple_tree','motorcycle','mountain',
+            'mouse','mushroom','oak_tree','orange','orchid','otter','palm_tree','pear','pickup_truck','pine_tree',
+            'plain','plate','poppy','porcupine','possum','rabbit','raccoon','ray','road','rocket',
+            'rose','sea','seal','shark','shrew','skunk','skyscraper','snail','snake','spider',
+            'squirrel','streetcar','sunflower','sweet_pepper','table','tank','telephone','television','tiger','tractor',
+            'train','trout','tulip','turtle','wardrobe','whale','willow_tree','wolf','woman','worm'
+        ],
+        'cifar10n': ['airplane','automobile','bird','cat','deer','dog','frog','horse','ship','truck'],
+        'svhn':     [str(i) for i in range(10)]
+    }
+    class_names = CLASS_NAMES[args.dataset]
+
+    # ── Load dataset ───────────────────────────────────────────────────────────
+    print(f"\nLoading {args.dataset} test set...")
+    _, test_dataset = get_datasets(args.dataset, data_dir=args.data_dir)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
+                             shuffle=False, num_workers=0)
+
+    # ── Build model ────────────────────────────────────────────────────────────
+    if args.model_type == 'simple_cnn':
+        model = SimpleCNN(num_classes=num_classes)
+    elif args.model_type == 'resnet':
+        model = ResNet(num_classes=num_classes, in_channels=3)
+    else:
+        model = MLP(input_size=3 * 32 * 32, num_classes=num_classes)
+
+    print(f"Loading checkpoint: {args.checkpoint}")
+    ckpt  = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    state = ckpt.get('model_state_dict', ckpt) if isinstance(ckpt, dict) else ckpt
+
+    # Strip 'model1.' prefix if checkpoint was saved from a UnifiedWSLModel wrapper
+    if any(k.startswith('model1.') for k in state.keys()):
+        print("  Detected 'model1.' prefix — stripping wrapper keys...")
+        state = {k.replace('model1.', '', 1): v for k, v in state.items()
+                 if k.startswith('model1.')}
+
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if missing:
+        print(f"  Warning: {len(missing)} missing keys in checkpoint")
+    if unexpected:
+        print(f"  Warning: {len(unexpected)} unexpected keys in checkpoint")
+    model.to(device).eval()
+
+    # ── BenchmarkEvaluator ─────────────────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print(f"  BENCHMARK EVALUATION")
+    print(f"  Dataset: {args.dataset} | Model: {args.model_type} | Strategy: {args.strategy}")
+    print(f"{'='*60}")
+
+    evaluator = BenchmarkEvaluator(model, test_loader, device)
+    metrics   = evaluator.evaluate_model(model)
+
+    print(f"\nResults:")
+    print(f"  Accuracy  : {metrics['accuracy']*100:.2f}%")
+    print(f"  Precision : {metrics['precision']*100:.2f}%")
+    print(f"  Recall    : {metrics['recall']*100:.2f}%")
+    print(f"  F1-Score  : {metrics['f1']*100:.2f}%")
+
+    # ── ErrorAnalysis ──────────────────────────────────────────────────────────
+    print(f"\n{'='*60}")
+    print(f"  ERROR ANALYSIS")
+    print(f"{'='*60}")
+
+    error_analyzer = ErrorAnalysis(model, test_loader, device, class_names)
+    error_results  = error_analyzer.analyze_errors()
+
+    print("\nClassification Report (top 10 classes):")
+    print(error_results['classification_report'].head(10).to_string())
+
+    print(f"\nTop 10 most common error pairs:")
+    error_df = error_results['error_cases']
+    top_errors = (error_df.groupby(['true_class', 'predicted_class'])
+                  .size().reset_index(name='count')
+                  .sort_values('count', ascending=False).head(10))
+    print(top_errors.to_string(index=False))
+
+    print(f"\nTotal errors: {len(error_df)} / {len(test_dataset)}")
+    print(f"Error rate  : {len(error_df)/len(test_dataset)*100:.2f}%")

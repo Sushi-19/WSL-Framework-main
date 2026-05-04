@@ -102,3 +102,6 @@ coverage.xml
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Local scripts
+batch_inference_test.py
