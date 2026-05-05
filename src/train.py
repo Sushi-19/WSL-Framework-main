@@ -130,7 +130,7 @@ def main():
     )
     
     logger.info("Starting training...")
-    history = trainer.train(epochs=args.epochs, early_stopping_patience=10)
+    history = trainer.train(epochs=args.epochs, early_stopping_patience=20)
     
     torch.save(history, save_dir / 'training_history.pt')
     logger.info("Training completed!")

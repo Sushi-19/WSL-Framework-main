@@ -136,8 +136,8 @@ class Trainer:
             else:
                 patience_counter += 1
                 if patience_counter >= early_stopping_patience:
-                    logger.info(f"Early stopping triggered after {epoch} epochs")
-                    break
+                    logger.info(f"Early stopping triggered after {epoch} epochs (Disabled, continuing...)")
+                    # break
                     
         self.plot_curves()
         self.evaluate()
