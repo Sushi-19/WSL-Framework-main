@@ -189,17 +189,14 @@ def load_model(dataset: str, model_name: str, strategy: str):
 
 
 def preprocess(image: Image.Image, dataset: str, model_name: str):
-    """Improvement #4: Center-crop preprocessing to preserve aspect ratio."""
+    """Preprocessing fixed to match training pipeline (0.5 mean/std and exact size resize)."""
     cfg  = DATASET_CONFIG[dataset]
     size = cfg["img_size"]
-    mean = cfg["mean"]
-    std  = cfg["std"]
+    mean = (0.5, 0.5, 0.5)
+    std  = (0.5, 0.5, 0.5)
 
-    # Resize slightly larger then center-crop to avoid squashing the image
-    bigger = int(size * 1.15)
     transform = transforms.Compose([
-        transforms.Resize(bigger, interpolation=transforms.InterpolationMode.LANCZOS),
-        transforms.CenterCrop(size),
+        transforms.Resize((size, size)),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
     ])
@@ -220,13 +217,12 @@ def run_inference_tta(model, image: Image.Image, dataset: str, temperature: floa
     """Improvement #1: Test-Time Augmentation — average over 6 augmented views."""
     cfg  = DATASET_CONFIG[dataset]
     size = cfg["img_size"]
-    mean = cfg["mean"]
-    std  = cfg["std"]
+    mean = (0.5, 0.5, 0.5)
+    std  = (0.5, 0.5, 0.5)
 
     norm = transforms.Normalize(mean=mean, std=std)
     to_t = transforms.Compose([
-        transforms.Resize(int(size * 1.15), interpolation=transforms.InterpolationMode.LANCZOS),
-        transforms.CenterCrop(size),
+        transforms.Resize((size, size)),
         transforms.ToTensor(),
         norm,
     ])

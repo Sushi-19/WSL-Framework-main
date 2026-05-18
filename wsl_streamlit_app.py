@@ -229,98 +229,99 @@ if 'experiment_results' not in st.session_state:
 if 'current_experiment' not in st.session_state:
     st.session_state.current_experiment = None
 
-# Real experiment results from matrix_results_50epochs
-PERFORMANCE_DATA = {
-    'CIFAR-100': {
-        'Simple CNN': {
-            'baseline': 0.4494, 'consistency': 0.4494, 'pseudo_labeling': 0.4494,
-            'co_training': 0.4494, 'adas_wsl': 0.4705
-        },
-        'ResNet': {
-            'baseline': 0.5367, 'consistency': 0.5600, 'pseudo_labeling': 0.5289,
-            'co_training': 0.5321, 'adas_wsl': 0.5416
-        },
-        'MLP': {
-            'baseline': 0.2013, 'consistency': 0.2013, 'pseudo_labeling': 0.2013,
-            'co_training': 0.2013, 'adas_wsl': 0.2104
-        }
-    },
-    'CIFAR-10N': {
-        'Simple CNN': {
-            'baseline': 0.7881, 'consistency': 0.7881, 'pseudo_labeling': 0.7881,
-            'co_training': 0.7881, 'adas_wsl': 0.7792
-        },
-        'ResNet': {
-            'baseline': 0.8345, 'consistency': 0.8476, 'pseudo_labeling': 0.8446,
-            'co_training': 0.8402, 'adas_wsl': 0.8350
-        },
-        'MLP': {
-            'baseline': 0.5426, 'consistency': 0.5305, 'pseudo_labeling': 0.5358,
-            'co_training': 0.5307, 'adas_wsl': 0.5354
-        }
-    },
-    'SVHN': {
-        'Simple CNN': {
-            'baseline': 0.9295, 'consistency': 0.9295, 'pseudo_labeling': 0.9295,
-            'co_training': 0.9295, 'adas_wsl': 0.9325
-        },
-        'ResNet': {
-            'baseline': 0.9338, 'consistency': 0.9417, 'pseudo_labeling': 0.9488,
-            'co_training': 0.9453, 'adas_wsl': 0.9471
-        },
-        'MLP': {
-            'baseline': 0.8012, 'consistency': 0.7916, 'pseudo_labeling': 0.8076,
-            'co_training': 0.7855, 'adas_wsl': 0.7964
-        }
-    }
+# ---- DYNAMIC DATA LOADING ----
+DATASET_MAP_REVERSE = {
+    'cifar100': 'CIFAR-100',
+    'cifar10n': 'CIFAR-10N',
+    'svhn': 'SVHN',
+    'stl10': 'STL-10'
 }
 
-STRATEGY_PERFORMANCE = {
-    'Baseline': 0.6940,
-    'Consistency Regularization': 0.6956,
-    'Pseudo-Labeling': 0.6968,
-    'Co-Training': 0.6935,
-    'ADAS-WSL': 0.7025
+MODEL_MAP_REVERSE = {
+    'simple_cnn': 'Simple CNN',
+    'resnet': 'ResNet',
+    'mlp': 'MLP'
 }
 
-STRATEGY_KEY_MAP = {
-    'Baseline': 'baseline',
-    'Consistency Regularization': 'consistency',
-    'Pseudo-Labeling': 'pseudo_labeling',
-    'Co-Training': 'co_training',
-    'ADAS-WSL': 'adas_wsl',
-    'Combined (Fixed Weights)': 'combined'
+STRATEGY_MAP_REVERSE = {
+    'baseline': 'Baseline',
+    'consistency': 'Consistency Regularization',
+    'pseudo_labeling': 'Pseudo-Labeling',
+    'co_training': 'Co-Training',
+    'adas_wsl': 'ADAS-WSL'
 }
 
-def load_experiment_data():
-    """Load experiment data from the experiments directory"""
-    experiments = []
-    experiments_dir = "experiments"
-    
-    if os.path.exists(experiments_dir):
-        for exp_dir in os.listdir(experiments_dir):
-            exp_path = os.path.join(experiments_dir, exp_dir)
-            if os.path.isdir(exp_path):
-                config_file = os.path.join(exp_path, "config.json")
-                results_file = os.path.join(exp_path, "test_results.json")
+STRATEGY_KEY_MAP = {v: k for k, v in STRATEGY_MAP_REVERSE.items()}
+STRATEGY_KEY_MAP['Combined (Fixed Weights)'] = 'combined'
+
+@st.cache_data
+def load_dynamic_performance_data(experiment_dir_name):
+    """Load experiment data dynamically from the selected directory"""
+    experiments_dir = os.path.join("experiments", experiment_dir_name)
+    perf_data = {}
+    for ds in DATASET_MAP_REVERSE.values():
+        perf_data[ds] = {}
+        for md in MODEL_MAP_REVERSE.values():
+            perf_data[ds][md] = {}
+            for strat in STRATEGY_KEY_MAP.values():
+                perf_data[ds][md][strat] = 0.0
                 
-                if os.path.exists(config_file):
-                    with open(config_file, 'r') as f:
-                        config = json.load(f)
+    if not os.path.exists(experiments_dir):
+        return perf_data
+        
+    for exp_dir in os.listdir(experiments_dir):
+        exp_path = os.path.join(experiments_dir, exp_dir)
+        if os.path.isdir(exp_path):
+            results_file = os.path.join(exp_path, "test_results.json")
+            if os.path.exists(results_file):
+                try:
+                    with open(results_file, 'r') as f:
+                        results = json.load(f)
                     
-                    results = {}
-                    if os.path.exists(results_file):
-                        with open(results_file, 'r') as f:
-                            results = json.load(f)
+                    ds_key = next((k for k in DATASET_MAP_REVERSE.keys() if exp_dir.startswith(k + "_")), None)
+                    if not ds_key: continue
+                    remainder = exp_dir[len(ds_key)+1:]
+                    md_key = next((k for k in MODEL_MAP_REVERSE.keys() if remainder.startswith(k + "_")), None)
+                    if not md_key: continue
+                    strat_key = remainder[len(md_key)+1:]
                     
-                    experiments.append({
-                        'name': exp_dir,
-                        'config': config,
-                        'results': results,
-                        'path': exp_path
-                    })
-    
-    return experiments
+                    ds_name = DATASET_MAP_REVERSE.get(ds_key)
+                    md_name = MODEL_MAP_REVERSE.get(md_key)
+                    
+                    if strat_key in STRATEGY_MAP_REVERSE.keys() or strat_key == "combined":
+                        perf_data[ds_name][md_name][strat_key] = results.get("test_accuracy", 0.0)
+                except Exception:
+                    pass
+    return perf_data
+
+def get_strategy_performance(perf_data):
+    """Compute average performance per strategy across all datasets and models"""
+    strategy_perf = {k: [] for k in STRATEGY_MAP_REVERSE.values()}
+    for ds in perf_data.values():
+        for md in ds.values():
+            for strat_key, acc in md.items():
+                if strat_key in STRATEGY_MAP_REVERSE and acc > 0:
+                    strategy_perf[STRATEGY_MAP_REVERSE[strat_key]].append(acc)
+    return {k: (sum(v)/len(v) if v else 0.0) for k, v in strategy_perf.items()}
+
+if os.path.exists("experiments"):
+    available_dirs = sorted([d for d in os.listdir("experiments") if os.path.isdir(os.path.join("experiments", d))], reverse=True)
+else:
+    available_dirs = []
+
+default_idx = available_dirs.index("matrix_results_100epochs") if "matrix_results_100epochs" in available_dirs else 0
+
+st.sidebar.markdown("### Data Source")
+exp_dir_name = st.sidebar.selectbox(
+    "Select Results Directory",
+    available_dirs if available_dirs else ["None"],
+    index=default_idx if available_dirs else 0,
+    help="Choose the directory to load experiment results from"
+)
+
+PERFORMANCE_DATA = load_dynamic_performance_data(exp_dir_name if exp_dir_name != "None" else "matrix_results_100epochs")
+STRATEGY_PERFORMANCE = get_strategy_performance(PERFORMANCE_DATA)
+# ---- END DYNAMIC DATA LOADING ----
 
 def create_confusion_matrix(accuracy, num_classes=10):
     """Create a realistic confusion matrix based on accuracy"""
@@ -388,7 +389,8 @@ def run_simulation_experiment(dataset, model, strategy, labeled_ratio, epochs):
     base_time_per_epoch = {
         'CIFAR-100': {'Simple CNN': 1.8, 'ResNet': 3.5, 'MLP': 0.9},
         'CIFAR-10N': {'Simple CNN': 1.2, 'ResNet': 2.8, 'MLP': 0.7},
-        'SVHN':      {'Simple CNN': 1.5, 'ResNet': 3.0, 'MLP': 0.8}
+        'SVHN':      {'Simple CNN': 1.5, 'ResNet': 3.0, 'MLP': 0.8},
+        'STL-10':    {'Simple CNN': 1.6, 'ResNet': 3.2, 'MLP': 0.85}
     }
     strategy_time_multiplier = {
         'Baseline': 1.0,
@@ -414,7 +416,7 @@ def run_simulation_experiment(dataset, model, strategy, labeled_ratio, epochs):
 
 def create_performance_comparison_chart():
     """Create a professional performance comparison chart using real results"""
-    datasets = ['CIFAR-100', 'CIFAR-10N', 'SVHN']
+    datasets = ['CIFAR-100', 'CIFAR-10N', 'SVHN', 'STL-10']
     models = ['Simple CNN', 'ResNet', 'MLP']
     strategies = ['Baseline', 'Consistency Regularization', 'Pseudo-Labeling', 'Co-Training', 'ADAS-WSL']
     
@@ -484,7 +486,7 @@ def main():
         # Dataset selection
         dataset = st.selectbox(
             "Select Dataset",
-            ["CIFAR-100", "CIFAR-10N", "SVHN"],
+            ["CIFAR-100", "CIFAR-10N", "SVHN", "STL-10"],
             help="Choose the dataset for your experiment"
         )
         
@@ -932,24 +934,52 @@ def main():
         """, unsafe_allow_html=True)
     
     # Performance highlights with real results
-    st.markdown("""
+    def get_best_for_ds(ds_name):
+        best_acc = 0.0
+        best_combo = "N/A"
+        adas_acc = 0.0
+        adas_combo = "N/A"
+        for md in PERFORMANCE_DATA.get(ds_name, {}):
+            for strat, acc in PERFORMANCE_DATA[ds_name][md].items():
+                if acc > best_acc:
+                    best_acc = acc
+                    strat_name = STRATEGY_MAP_REVERSE.get(strat, strat)
+                    best_combo = f"{md} + {strat_name}"
+                if strat == "adas_wsl" and acc > adas_acc:
+                    adas_acc = acc
+                    adas_combo = f"{md} + ADAS-WSL"
+        return best_acc, best_combo, adas_acc, adas_combo
+
+    svhn_best, svhn_best_c, svhn_adas, svhn_adas_c = get_best_for_ds('SVHN')
+    cifar10n_best, cifar10n_best_c, cifar10n_adas, cifar10n_adas_c = get_best_for_ds('CIFAR-10N')
+    cifar100_best, cifar100_best_c, cifar100_adas, cifar100_adas_c = get_best_for_ds('CIFAR-100')
+    
+    epochs_title = "Training"
+    if "100epochs" in exp_dir_name:
+        epochs_title = "100 Epoch Training"
+    elif "50epochs" in exp_dir_name:
+        epochs_title = "50 Epoch Training"
+    elif "35epochs" in exp_dir_name:
+        epochs_title = "35 Epoch Training"
+
+    st.markdown(f"""
     <div class="performance-highlight">
-        <h3>Experimental Results — 50 Epoch Training</h3>
+        <h3>Experimental Results — {epochs_title}</h3>
         <div style="display: flex; justify-content: space-around; margin-top: 1rem;">
             <div>
                 <h4>SVHN Dataset</h4>
-                <p><strong>94.88%</strong> best accuracy (ResNet + Pseudo-Labeling)</p>
-                <p><strong>93.25%</strong> with Simple CNN + ADAS-WSL</p>
+                <p><strong>{svhn_best*100:.2f}%</strong> best accuracy ({svhn_best_c})</p>
+                <p><strong>{svhn_adas*100:.2f}%</strong> with {svhn_adas_c}</p>
             </div>
             <div>
                 <h4>CIFAR-10N Dataset</h4>
-                <p><strong>84.76%</strong> best accuracy (ResNet + Consistency)</p>
-                <p><strong>83.50%</strong> with ResNet + ADAS-WSL</p>
+                <p><strong>{cifar10n_best*100:.2f}%</strong> best accuracy ({cifar10n_best_c})</p>
+                <p><strong>{cifar10n_adas*100:.2f}%</strong> with {cifar10n_adas_c}</p>
             </div>
             <div>
                 <h4>CIFAR-100 Dataset</h4>
-                <p><strong>56.00%</strong> best accuracy (ResNet + Consistency)</p>
-                <p><strong>54.16%</strong> with ResNet + ADAS-WSL</p>
+                <p><strong>{cifar100_best*100:.2f}%</strong> best accuracy ({cifar100_best_c})</p>
+                <p><strong>{cifar100_adas*100:.2f}%</strong> with {cifar100_adas_c}</p>
             </div>
         </div>
     </div>
