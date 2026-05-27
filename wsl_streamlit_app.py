@@ -255,8 +255,73 @@ STRATEGY_KEY_MAP = {v: k for k, v in STRATEGY_MAP_REVERSE.items()}
 STRATEGY_KEY_MAP['Combined (Fixed Weights)'] = 'combined'
 
 @st.cache_data
+def load_csv_data():
+    """Load results directly from extracted_matrix_results.csv if available"""
+    csv_path = "extracted_matrix_results.csv"
+    if not os.path.exists(csv_path):
+        return None
+    try:
+        df = pd.read_csv(csv_path)
+        # Normalize/Standardize names for consistency
+        df['Dataset'] = df['Dataset'].replace({
+            'CIFAR100': 'CIFAR-100',
+            'CIFAR10N': 'CIFAR-10N',
+            'STL10': 'STL-10',
+            'SVHN': 'SVHN'
+        })
+        df['Model'] = df['Model'].replace({
+            'MLP': 'MLP',
+            'RESNET': 'ResNet',
+            'SIMPLE CNN': 'Simple CNN'
+        })
+        df['Strategy'] = df['Strategy'].replace({
+            'ADAS WSL': 'ADAS-WSL',
+            'BASELINE': 'Baseline',
+            'CONSISTENCY': 'Consistency Regularization',
+            'CO TRAINING': 'Co-Training',
+            'PSEUDO LABELING': 'Pseudo-Labeling'
+        })
+        return df
+    except Exception:
+        return None
+
+def get_performance_from_csv(csv_df, epochs_dir):
+    """Parse accuracy data for selected epochs run from the loaded CSV"""
+    perf_data = {}
+    for ds in DATASET_MAP_REVERSE.values():
+        perf_data[ds] = {}
+        for md in MODEL_MAP_REVERSE.values():
+            perf_data[ds][md] = {}
+            for strat_key in STRATEGY_KEY_MAP.values():
+                perf_data[ds][md][strat_key] = 0.0
+                
+    if csv_df is None:
+        return perf_data
+        
+    strategy_map = {
+        'ADAS-WSL': 'adas_wsl',
+        'Baseline': 'baseline',
+        'Consistency Regularization': 'consistency',
+        'Co-Training': 'co_training',
+        'Pseudo-Labeling': 'pseudo_labeling'
+    }
+    
+    sub_df = csv_df[csv_df['EpochsDir'] == epochs_dir]
+    for _, row in sub_df.iterrows():
+        ds = row['Dataset']
+        md = row['Model']
+        strat_name = row['Strategy']
+        acc = row['TestAccuracy']
+        
+        strat_key = strategy_map.get(strat_name)
+        if ds in perf_data and md in perf_data[ds] and strat_key:
+            perf_data[ds][md][strat_key] = acc
+            
+    return perf_data
+
+@st.cache_data
 def load_dynamic_performance_data(experiment_dir_name):
-    """Load experiment data dynamically from the selected directory"""
+    """Load experiment data dynamically from the selected directory (fallback)"""
     experiments_dir = os.path.join("experiments", experiment_dir_name)
     perf_data = {}
     for ds in DATASET_MAP_REVERSE.values():
@@ -304,7 +369,12 @@ def get_strategy_performance(perf_data):
                     strategy_perf[STRATEGY_MAP_REVERSE[strat_key]].append(acc)
     return {k: (sum(v)/len(v) if v else 0.0) for k, v in strategy_perf.items()}
 
-if os.path.exists("experiments"):
+# Load CSV data
+CSV_DATA = load_csv_data()
+
+if CSV_DATA is not None:
+    available_dirs = sorted(list(CSV_DATA['EpochsDir'].unique()), reverse=True)
+elif os.path.exists("experiments"):
     available_dirs = sorted([d for d in os.listdir("experiments") if os.path.isdir(os.path.join("experiments", d))], reverse=True)
 else:
     available_dirs = []
@@ -319,7 +389,13 @@ exp_dir_name = st.sidebar.selectbox(
     help="Choose the directory to load experiment results from"
 )
 
-PERFORMANCE_DATA = load_dynamic_performance_data(exp_dir_name if exp_dir_name != "None" else "matrix_results_100epochs")
+selected_dir = exp_dir_name if exp_dir_name != "None" else "matrix_results_100epochs"
+
+if CSV_DATA is not None and selected_dir in CSV_DATA['EpochsDir'].values:
+    PERFORMANCE_DATA = get_performance_from_csv(CSV_DATA, selected_dir)
+else:
+    PERFORMANCE_DATA = load_dynamic_performance_data(selected_dir)
+
 STRATEGY_PERFORMANCE = get_strategy_performance(PERFORMANCE_DATA)
 # ---- END DYNAMIC DATA LOADING ----
 
@@ -475,12 +551,399 @@ def create_performance_comparison_chart():
     
     return fig
 
+def render_comparative_analysis():
+    st.markdown('<h2 class="section-header">Dataset Comparative Analysis (CIFAR-10N vs SVHN vs STL-10)</h2>', unsafe_allow_html=True)
+    
+    # Check if CSV data is loaded successfully
+    if CSV_DATA is None:
+        st.warning("Please make sure extracted_matrix_results.csv is present in the root directory to view advanced analysis.")
+        return
+        
+    # Standardised lists
+    target_datasets = ["SVHN", "CIFAR-10N", "STL-10"]
+    models = ["MLP", "Simple CNN", "ResNet"]
+    strategies = ["Baseline", "Consistency Regularization", "Pseudo-Labeling", "Co-Training", "ADAS-WSL"]
+    
+    # Filter data for selected directory and three target datasets
+    epochs_dir = selected_dir
+    df_filtered = CSV_DATA[(CSV_DATA['EpochsDir'] == epochs_dir) & (CSV_DATA['Dataset'].isin(target_datasets))].copy()
+    
+    # 1. Strategy Lift Calculations (relative to Baseline)
+    baselines = df_filtered[df_filtered['Strategy'] == 'Baseline'].set_index(['Dataset', 'Model'])['TestAccuracy'].to_dict()
+    
+    lift_rows = []
+    for _, row in df_filtered.iterrows():
+        ds = row['Dataset']
+        md = row['Model']
+        strat = row['Strategy']
+        acc = row['TestAccuracy']
+        loss = row['TestLoss']
+        best_epoch = row['BestEpoch']
+        
+        baseline_acc = baselines.get((ds, md), 0.0)
+        # Calculate absolute lift in percentage points
+        lift = (acc - baseline_acc) * 100
+        
+        lift_rows.append({
+            'Dataset': ds,
+            'Model': md,
+            'Strategy': strat,
+            'Lift': lift,
+            'Accuracy': acc,
+            'Loss': loss,
+            'BestEpoch': best_epoch
+        })
+        
+    lift_df = pd.DataFrame(lift_rows)
+    lift_plot_df = lift_df[lift_df['Strategy'] != 'Baseline'] # Exclude baseline from lift comparison
+
+    # Overview Card
+    st.markdown("""
+    <div class="strategy-card" style="margin-bottom: 2rem;">
+        <h3 style="color: #00B4D8; margin-bottom: 0.5rem; font-family: sans-serif; font-size: 1.4rem;">
+            Comparative Analysis Overview
+        </h3>
+        <p style="color: #B0B0B0; font-family: sans-serif; margin-bottom: 0px;">
+            This interactive dashboard offers an in-depth, scientifically rigorous evaluation of deep learning architectures 
+            behaving on <b>SVHN</b> (centered digit manifolds), <b>CIFAR-10N</b> (human label noise), and <b>STL-10</b> (extreme label scarcity).
+            Explore the sub-tabs below to inspect model behaviors under different analytical views.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Sub-tabs layout
+    sub_tabs = st.tabs([
+        "📊 Accuracy & Strategy Matrix",
+        "📈 Strategy Performance Lift",
+        "⚡ Learning Convergence Speed",
+        "🛡️ Robustness & Calibration",
+        "🌡️ Cross-Domain Correlation"
+    ])
+    
+    # ---- TAB 1: Accuracy & Strategy Matrix ----
+    with sub_tabs[0]:
+        st.markdown('<h3 style="color: #FFFFFF; font-family: sans-serif; font-size: 1.3rem; margin-top: 1rem; margin-bottom: 1rem;">Model & Strategy Accuracy Matrix</h3>', unsafe_allow_html=True)
+        
+        # Interactive selectors for filtering
+        sel_col1, sel_col2 = st.columns(2)
+        with sel_col1:
+            selected_strat = st.selectbox(
+                "Select WSL Strategy for Model Comparison",
+                ["All (Average)"] + strategies,
+                key="comp_strat_select"
+            )
+        with sel_col2:
+            selected_model = st.selectbox(
+                "Select Architecture for Strategy Comparison",
+                models,
+                key="comp_model_select"
+            )
+            
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            if selected_strat == "All (Average)":
+                plot_df = df_filtered.groupby(["Dataset", "Model"])["TestAccuracy"].mean().reset_index()
+                plot_df = plot_df.rename(columns={"TestAccuracy": "Accuracy"})
+                chart_title = "Average Model Accuracy across Target Datasets"
+            else:
+                plot_df = df_filtered[df_filtered["Strategy"] == selected_strat].copy()
+                plot_df = plot_df.rename(columns={"TestAccuracy": "Accuracy"})
+                chart_title = f"Model Accuracy with {selected_strat}"
+                
+            fig_models = px.bar(
+                plot_df,
+                x='Dataset',
+                y='Accuracy',
+                color='Model',
+                barmode='group',
+                color_discrete_map={
+                    'ResNet': '#00B4D8',
+                    'Simple CNN': '#4ECDC4',
+                    'MLP': '#FF6B6B'
+                },
+                title=chart_title,
+                height=400,
+                text_auto='.2%'
+            )
+            fig_models.update_layout(
+                plot_bgcolor='#1C1F26',
+                paper_bgcolor='#0E1117',
+                font=dict(family="sans-serif", size=12, color='#FFFFFF'),
+                title_x=0.5,
+                legend=dict(
+                    bgcolor='rgba(28, 31, 38, 0.8)',
+                    bordercolor='#2A2D35',
+                    borderwidth=1
+                )
+            )
+            fig_models.update_xaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+            fig_models.update_yaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35', tickformat='.0%')
+            st.plotly_chart(fig_models, use_container_width=True)
+            
+        with chart_col2:
+            model_df = df_filtered[df_filtered["Model"] == selected_model].copy()
+            model_df = model_df.rename(columns={"TestAccuracy": "Accuracy"})
+            
+            fig_strats = px.bar(
+                model_df,
+                x='Strategy',
+                y='Accuracy',
+                color='Dataset',
+                barmode='group',
+                color_discrete_map={
+                    'SVHN': '#00B4D8',
+                    'CIFAR-10N': '#FFE66D',
+                    'STL-10': '#FF6B6B'
+                },
+                title=f"WSL Strategy Accuracies on {selected_model}",
+                height=400,
+                text_auto='.2%'
+            )
+            fig_strats.update_layout(
+                plot_bgcolor='#1C1F26',
+                paper_bgcolor='#0E1117',
+                font=dict(family="sans-serif", size=12, color='#FFFFFF'),
+                title_x=0.5,
+                legend=dict(
+                    bgcolor='rgba(28, 31, 38, 0.8)',
+                    bordercolor='#2A2D35',
+                    borderwidth=1
+                )
+            )
+            fig_strats.update_xaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+            fig_strats.update_yaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35', tickformat='.0%')
+            st.plotly_chart(fig_strats, use_container_width=True)
+            
+        st.markdown('<h3 style="color: #FFFFFF; font-family: sans-serif; font-size: 1.3rem; margin-top: 1.5rem; text-align: center;">Accuracy Performance Matrix</h3>', unsafe_allow_html=True)
+        
+        pivot_df = df_filtered.pivot_table(
+            index=["Model", "Strategy"], 
+            columns="Dataset", 
+            values="TestAccuracy"
+        ).reset_index()
+        
+        pivot_df = pivot_df[["Model", "Strategy", "SVHN", "CIFAR-10N", "STL-10"]]
+        
+        st.dataframe(
+            pivot_df.style.format({
+                'SVHN': '{:.2%}',
+                'CIFAR-10N': '{:.2%}',
+                'STL-10': '{:.2%}'
+            }),
+            use_container_width=True
+        )
+
+    # ---- TAB 2: Strategy Lift Analysis ----
+    with sub_tabs[1]:
+        st.markdown('<h3 style="color: #FFFFFF; font-family: sans-serif; font-size: 1.3rem; margin-top: 1rem; margin-bottom: 1rem;">WSL Performance Lift over Baseline Supervised Models</h3>', unsafe_allow_html=True)
+        
+        lift_model = st.selectbox(
+            "Select Model Architecture for Lift Evaluation",
+            models,
+            key="lift_model_select"
+        )
+        
+        lift_plot_filtered = lift_plot_df[lift_plot_df['Model'] == lift_model]
+        
+        fig_lift = px.bar(
+            lift_plot_filtered,
+            x='Strategy',
+            y='Lift',
+            color='Dataset',
+            barmode='group',
+            color_discrete_map={
+                'SVHN': '#00B4D8',
+                'CIFAR-10N': '#FFE66D',
+                'STL-10': '#FF6B6B'
+            },
+            title=f"WSL Strategy Performance Lift (Accuracy Points gain vs. Baseline) on {lift_model}",
+            labels={'Lift': 'Accuracy Lift (Percentage Points)'},
+            height=450,
+            text_auto='.2f'
+        )
+        fig_lift.update_layout(
+            plot_bgcolor='#1C1F26',
+            paper_bgcolor='#0E1117',
+            font=dict(family="sans-serif", size=12, color='#FFFFFF'),
+            title_x=0.5,
+            legend=dict(
+                bgcolor='rgba(28, 31, 38, 0.8)',
+                bordercolor='#2A2D35',
+                borderwidth=1
+            )
+        )
+        fig_lift.update_xaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+        fig_lift.update_yaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+        st.plotly_chart(fig_lift, use_container_width=True)
+
+    # ---- TAB 3: Learning Convergence Speed ----
+    with sub_tabs[2]:
+        st.markdown('<h3 style="color: #FFFFFF; font-family: sans-serif; font-size: 1.3rem; margin-top: 1rem; margin-bottom: 1rem;">Computational Efficiency & Learning Speed</h3>', unsafe_allow_html=True)
+        
+        conv_model = st.selectbox(
+            "Select Model Architecture for Convergence Speed Evaluation",
+            models,
+            key="conv_model_select"
+        )
+        
+        conv_filtered = df_filtered[df_filtered['Model'] == conv_model]
+        
+        fig_conv = px.bar(
+            conv_filtered,
+            x='Strategy',
+            y='BestEpoch',
+            color='Dataset',
+            barmode='group',
+            color_discrete_map={
+                'SVHN': '#00B4D8',
+                'CIFAR-10N': '#FFE66D',
+                'STL-10': '#FF6B6B'
+            },
+            title=f"Convergence Speed (Epoch of Best Validation Accuracy) on {conv_model}",
+            labels={'BestEpoch': 'Best Epoch Count (Lower is faster)'},
+            height=450,
+            text_auto=True
+        )
+        fig_conv.update_layout(
+            plot_bgcolor='#1C1F26',
+            paper_bgcolor='#0E1117',
+            font=dict(family="sans-serif", size=12, color='#FFFFFF'),
+            title_x=0.5,
+            legend=dict(
+                bgcolor='rgba(28, 31, 38, 0.8)',
+                bordercolor='#2A2D35',
+                borderwidth=1
+            )
+        )
+        fig_conv.update_xaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+        fig_conv.update_yaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+        st.plotly_chart(fig_conv, use_container_width=True)
+
+    # ---- TAB 4: Robustness & Calibration ----
+    with sub_tabs[3]:
+        st.markdown('<h3 style="color: #FFFFFF; font-family: sans-serif; font-size: 1.3rem; margin-top: 1rem; margin-bottom: 1rem;">Model Calibration: Accuracy vs. Cross Entropy Loss</h3>', unsafe_allow_html=True)
+        
+        robust_ds = st.multiselect(
+            "Filter Datasets to Plot",
+            options=target_datasets,
+            default=target_datasets,
+            key="robust_ds_select"
+        )
+        
+        robust_filtered = df_filtered[df_filtered['Dataset'].isin(robust_ds)]
+        
+        fig_robust = px.scatter(
+            robust_filtered,
+            x='TestAccuracy',
+            y='TestLoss',
+            color='Strategy',
+            symbol='Dataset',
+            size='BestEpoch',
+            hover_data=['Model'],
+            color_discrete_map={
+                'Baseline': '#95A5A6',
+                'Consistency Regularization': '#4ECDC4',
+                'Pseudo-Labeling': '#FF6B6B',
+                'Co-Training': '#FFE66D',
+                'ADAS-WSL': '#A29BFE'
+            },
+            title="Robustness Space (Test Loss vs. Test Accuracy, bubble size scaled by Convergence Epoch)",
+            labels={'TestAccuracy': 'Test Accuracy', 'TestLoss': 'Test Loss (Cross Entropy)'},
+            height=500
+        )
+        fig_robust.update_layout(
+            plot_bgcolor='#1C1F26',
+            paper_bgcolor='#0E1117',
+            font=dict(family="sans-serif", size=12, color='#FFFFFF'),
+            title_x=0.5,
+            legend=dict(
+                bgcolor='rgba(28, 31, 38, 0.8)',
+                bordercolor='#2A2D35',
+                borderwidth=1
+            )
+        )
+        fig_robust.update_xaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35', tickformat='.1%')
+        fig_robust.update_yaxes(gridcolor='#2A2D35', zerolinecolor='#2A2D35')
+        st.plotly_chart(fig_robust, use_container_width=True)
+
+    # ---- TAB 5: Cross-Domain Correlation ----
+    with sub_tabs[4]:
+        st.markdown('<h3 style="color: #FFFFFF; font-family: sans-serif; font-size: 1.3rem; margin-top: 1rem; margin-bottom: 1rem;">Cross-Domain Performance Correlation Matrix</h3>', unsafe_allow_html=True)
+        
+        # Calculate cross-dataset correlation
+        pivot_corr = df_filtered.pivot_table(
+            index=['Strategy', 'Model'],
+            columns='Dataset',
+            values='TestAccuracy'
+        )
+        
+        corr_matrix = pivot_corr.corr()
+        
+        # Explicitly reindex to guarantee exact order match for the Plotly Table
+        target_order = ['SVHN', 'CIFAR-10N', 'STL-10']
+        corr_matrix = corr_matrix.reindex(index=target_order, columns=target_order)
+        
+        # Color-coded Plotly Table Matrix
+        fig_corr_matrix = go.Figure(data=[go.Table(
+            header=dict(
+                values=['<b>Dataset</b>', '<b>SVHN</b>', '<b>CIFAR-10N</b>', '<b>STL-10</b>'],
+                fill_color='#1C1F26',
+                align='center',
+                font=dict(color='white', size=13),
+                line_color='#2A2D35'
+            ),
+            cells=dict(
+                values=[
+                    ['<b>SVHN</b>', '<b>CIFAR-10N</b>', '<b>STL-10</b>'],
+                    [f"{val:.3f}" for val in corr_matrix['SVHN']],
+                    [f"{val:.3f}" for val in corr_matrix['CIFAR-10N']],
+                    [f"{val:.3f}" for val in corr_matrix['STL-10']]
+                ],
+                fill_color=[
+                    ['#1C1F26', '#1C1F26', '#1C1F26'], # Row headers
+                    ['rgba(0, 180, 216, 0.25)'] * 3,   # SVHN column cells (Blue)
+                    ['rgba(255, 230, 109, 0.25)'] * 3,  # CIFAR-10N column cells (Yellow)
+                    ['rgba(255, 107, 107, 0.25)'] * 3   # STL-10 column cells (Red)
+                ],
+                align='center',
+                font=dict(color='white', size=12),
+                line_color='#2A2D35',
+                height=40
+            )
+        )])
+        
+        fig_corr_matrix.update_layout(
+            title={
+                'text': "Strategy Consistency Cross-Correlation Matrix",
+                'x': 0.5,
+                'xanchor': 'center',
+                'font': {'size': 16, 'color': '#FFFFFF'}
+            },
+            height=300,
+            plot_bgcolor='#1C1F26',
+            paper_bgcolor='#0E1117',
+            font=dict(family="sans-serif", size=12, color='#FFFFFF'),
+            margin=dict(l=20, r=20, t=50, b=20)
+        )
+        
+        st.plotly_chart(fig_corr_matrix, use_container_width=True)
+
 def main():
     # Professional header
     st.markdown('<h1 class="main-header">Weakly Supervised Learning Framework</h1>', unsafe_allow_html=True)
     
     # Sidebar for configuration
     with st.sidebar:
+        st.markdown("### Navigation")
+        app_mode = st.radio(
+            "Select Dashboard View",
+            ["🧪 Interactive Sandbox", "📊 Dataset Comparative Analysis"],
+            index=0,
+            help="Switch between sandbox simulation and target dataset comparisons"
+        )
+        st.markdown("---")
+        
         st.markdown("### Experiment Configuration")
         
         # Dataset selection
@@ -541,6 +1004,10 @@ def main():
             st.session_state.experiment_results.append(experiment_data)
             st.session_state.current_experiment = experiment_data
             st.success("Experiment completed successfully!")
+            
+    if app_mode == "📊 Dataset Comparative Analysis":
+        render_comparative_analysis()
+        return
     
     # Main content area
     col1, col2 = st.columns([2, 1])

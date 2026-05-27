@@ -70,7 +70,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-EXPERIMENTS_DIR = os.path.join(os.path.dirname(__file__), "experiments", "matrix_results_50epochs")
+EXPERIMENTS_DIR = os.path.join(os.path.dirname(__file__), "experiments", "matrix_results_100epochs")
 
 DATASET_CONFIG = {
     "CIFAR-100": {
