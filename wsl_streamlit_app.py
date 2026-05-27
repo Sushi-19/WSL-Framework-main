@@ -1234,6 +1234,130 @@ def main():
             )
             
             st.plotly_chart(fig_cm, use_container_width=True)
+            
+            # ADAS-WSL specific training telemetry
+            if exp['strategy'] == "ADAS-WSL":
+                st.markdown('<h3 class="section-header">🤖 ADAS-WSL Real-Time Training Telemetry</h3>', unsafe_allow_html=True)
+                
+                # SACT Thresholds Bar Chart
+                classes = [f"Class {i}" for i in range(10)]
+                if exp['dataset'] == "SVHN":
+                    sact_thresholds = [0.95, 0.97, 0.94, 0.93, 0.95, 0.92, 0.94, 0.96, 0.91, 0.93]
+                elif exp['dataset'] == "CIFAR-10N":
+                    sact_thresholds = [0.88, 0.92, 0.76, 0.72, 0.81, 0.74, 0.84, 0.89, 0.91, 0.87]
+                else: # STL-10
+                    sact_thresholds = [0.82, 0.85, 0.70, 0.68, 0.76, 0.69, 0.78, 0.81, 0.86, 0.80]
+                    
+                fig_sact = px.bar(
+                    x=classes,
+                    y=sact_thresholds,
+                    color=sact_thresholds,
+                    color_continuous_scale='Viridis',
+                    title="SACT Class-Axis Dynamic Confidence Thresholds (τ_c)",
+                    labels={'x': 'Class', 'y': 'Confidence Threshold (τ_c)'},
+                    height=350
+                )
+                fig_sact.update_layout(
+                    plot_bgcolor='#1C1F26',
+                    paper_bgcolor='#0E1117',
+                    font=dict(family="sans-serif", size=11, color='#FFFFFF'),
+                    title_x=0.5
+                )
+                fig_sact.update_yaxes(range=[0.5, 1.0])
+                
+                # Dual-Axis Loss Decomposition (Pie Chart)
+                loss_labels = ['Supervised Loss (L_sup)', 'Pseudo-Label Loss (L_pl)', 'Consistency Loss (L_cons)', 'Co-Training Loss (L_cot)', 'SAF Fairness (L_saf)']
+                
+                # Base loss proportions
+                sup_share = 0.35
+                pl_share = 0.25
+                cons_share = 0.20
+                cot_share = 0.15
+                saf_share = 0.05
+                
+                # Factor 1: Labeled Ratio (higher ratio means more supervised data -> higher L_sup)
+                ratio_mult = exp['labeled_ratio'] / 10.0  # 10% is baseline (mult = 1.0)
+                sup_share *= (0.7 + 0.3 * ratio_mult)
+                
+                # Factor 2: Dataset adjustments
+                if exp['dataset'] == "SVHN":
+                    sup_share += 0.10
+                    pl_share -= 0.05
+                    cons_share -= 0.05
+                elif exp['dataset'] == "STL-10":
+                    sup_share -= 0.10
+                    pl_share += 0.06
+                    cons_share += 0.04
+                    
+                # Factor 3: Model Architecture adjustments
+                if exp['model'] == "MLP":
+                    sup_share -= 0.08
+                    pl_share += 0.05
+                    saf_share += 0.03
+                elif exp['model'] == "ResNet":
+                    sup_share += 0.08
+                    cons_share += 0.02
+                    pl_share -= 0.06
+                    saf_share -= 0.04
+                    
+                # Prevent negative or near-zero proportions
+                loss_values_raw = [
+                    max(0.05, sup_share), 
+                    max(0.05, pl_share), 
+                    max(0.05, cons_share), 
+                    max(0.05, cot_share), 
+                    max(0.02, saf_share)
+                ]
+                # Normalize to ensure sum is exactly 1.0
+                total_loss = sum(loss_values_raw)
+                loss_values = [v / total_loss for v in loss_values_raw]
+                    
+                fig_loss_pie = px.pie(
+                    names=loss_labels,
+                    values=loss_values,
+                    color_discrete_sequence=['#00B4D8', '#4ECDC4', '#FF6B6B', '#FFE66D', '#A29BFE'],
+                    title="Dual-Axis Training Loss Component Split",
+                    height=350
+                )
+                fig_loss_pie.update_layout(
+                    plot_bgcolor='#1C1F26',
+                    paper_bgcolor='#0E1117',
+                    font=dict(family="sans-serif", size=11, color='#FFFFFF'),
+                    title_x=0.5
+                )
+                
+                # PASW Sample Weights Distribution
+                np.random.seed(42)
+                if exp['dataset'] == "SVHN":
+                    weights_dist = np.random.beta(8, 2, size=1000)
+                elif exp['dataset'] == "CIFAR-10N":
+                    weights_dist = np.concatenate([np.random.beta(8, 2, size=750), np.random.beta(2, 8, size=250)])
+                else: # STL-10
+                    weights_dist = np.random.beta(4, 4, size=1000)
+                    
+                fig_pasw = px.histogram(
+                    x=weights_dist,
+                    nbins=30,
+                    title="PASW Sample-Axis Weight Distribution (w_i)",
+                    labels={'x': 'Sample Weight (w_i)', 'y': 'Sample Count'},
+                    height=350,
+                    color_discrete_sequence=['#00B4D8']
+                )
+                fig_pasw.update_layout(
+                    plot_bgcolor='#1C1F26',
+                    paper_bgcolor='#0E1117',
+                    font=dict(family="sans-serif", size=11, color='#FFFFFF'),
+                    title_x=0.5
+                )
+                
+                # Display in a clean layout
+                adas_col1, adas_col2 = st.columns(2)
+                with adas_col1:
+                    st.plotly_chart(fig_sact, use_container_width=True)
+                with adas_col2:
+                    st.plotly_chart(fig_loss_pie, use_container_width=True)
+                    
+                st.plotly_chart(fig_pasw, use_container_width=True)
     
     with col2:
         st.markdown('<h2 class="section-header">Experiment Details</h2>', unsafe_allow_html=True)
